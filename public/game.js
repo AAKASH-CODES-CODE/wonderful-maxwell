@@ -739,8 +739,8 @@ const Game = {
     document.getElementById('main-menu').style.display = 'none';
     document.getElementById('game-hud').style.display = 'block';
     
-    // Initialize procedural audio heartbeat
-    AudioAssets.startHeartbeat();
+    // Initialize procedural audio heartbeat (Temporarily disabled for map design)
+    // AudioAssets.startHeartbeat();
     AudioAssets.setHeartbeatBpm(60);
 
     // Initialize clock
@@ -758,13 +758,15 @@ const Game = {
     // 4. Create local flashlight
     this.setupFlashlight();
 
-    // 5. Initialize Granny
+    // 5. Initialize Granny (Temporarily commented out to disable Granny)
+    /*
     if (this.isHost) {
       this.spawnGrannyAI();
     } else {
       // Clients spawn dummy Granny mesh that gets synced
       this.spawnGrannyVisualDummy();
     }
+    */
 
     // 6. Request Pointer Lock (Only on Desktop)
     this.detectAndSetupMobile();
