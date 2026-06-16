@@ -860,7 +860,7 @@ const Game = {
           const deltaY = touch.clientY - prevTouchY;
           
           this.localPlayer.ry -= deltaX * 0.006;
-          this.localPlayer.rx += deltaY * 0.006; // Fix touch Y-axis look inversion
+          this.localPlayer.rx -= deltaY * 0.006; // Restore normal Y-axis look with YXZ rotation order
           this.localPlayer.rx = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, this.localPlayer.rx));
           
           this.camera.rotation.set(0, 0, 0);
@@ -922,6 +922,7 @@ const Game = {
     this.scene.fog = new THREE.FogExp2(0x050507, 0.025); // Thinner fog for better visibility
 
     this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera.rotation.order = 'YXZ'; // Set rotation order to YXZ to prevent tilting/roll and pitch inversion
     
     // Start position: in bedroom (living area helper)
     this.camera.position.set(0, 1.6, 6);
@@ -968,7 +969,7 @@ const Game = {
 
       // Rotate camera
       this.localPlayer.ry -= e.movementX * this.mouseSensitivity;
-      this.localPlayer.rx += e.movementY * this.mouseSensitivity; // Fix Y-axis look inversion
+      this.localPlayer.rx -= e.movementY * this.mouseSensitivity; // Restore normal Y-axis look with YXZ rotation order
 
       // Clamp vertical look
       this.localPlayer.rx = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, this.localPlayer.rx));
