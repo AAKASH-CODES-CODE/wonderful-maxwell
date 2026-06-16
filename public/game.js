@@ -1405,151 +1405,178 @@ const Game = {
   updateGrannyAI(delta) {
     if (!this.isHost || !this.granny.mesh) return;
 
-    const grannyPos = this.granny.mesh.position;
-    
-    // Check line of sight to players
-    let visiblePlayer = null;
-    let closestDist = Infinity;
-
-    // 1. Check local player
-    const localVec = new THREE.Vector3(this.localPlayer.x, grannyPos.y, this.localPlayer.z);
-    let distLocal = grannyPos.distanceTo(localVec);
-    
-    if (distLocal < this.granny.sightDistance && !this.localPlayer.isUnconscious) {
-      if (this.checkLineOfSight(grannyPos, localVec)) {
-        visiblePlayer = { pos: localVec, id: this.peerId };
-        closestDist = distLocal;
-      }
-    }
-
-    // 2. Check remote peers
-    Object.keys(this.peers).forEach(id => {
-      const peer = this.peers[id];
-      if (!peer.playerMesh || !this.players[id] || this.players[id].isUnconscious) return;
+    try {
+      const grannyPos = this.granny.mesh.position;
       
-      const peerVec = new THREE.Vector3(peer.playerMesh.position.x, grannyPos.y, peer.playerMesh.position.z);
-      const dist = grannyPos.distanceTo(peerVec);
+      // Check line of sight to players
+      let visiblePlayer = null;
+      let closestDist = Infinity;
+
+      // 1. Check local player
+      const localVec = new THREE.Vector3(this.localPlayer ? this.localPlayer.x : 0, grannyPos.y, this.localPlayer ? this.localPlayer.z : 0);
+      let distLocal = grannyPos.distanceTo(localVec);
       
-      if (dist < this.granny.sightDistance && dist < closestDist) {
-        if (this.checkLineOfSight(grannyPos, peerVec)) {
-          visiblePlayer = { pos: peerVec, id: id };
-          closestDist = dist;
+      if (this.localPlayer && distLocal < this.granny.sightDistance && !this.localPlayer.isUnconscious) {
+        if (this.checkLineOfSight(grannyPos, localVec)) {
+          visiblePlayer = { pos: localVec, id: this.peerId };
+          closestDist = distLocal;
         }
       }
-    });
 
-    // Handle states
-    if (visiblePlayer) {
-      // Switch to chasing
-      if (this.granny.state !== 'chase') {
-        // Play stinger or scream dynamically
-        AudioAssets.playJumpscare();
-      }
-      this.granny.state = 'chase';
-      this.granny.targetPos.copy(visiblePlayer.pos);
-      
-      // Heartbeat pulse speedup for nearby local player
-      if (visiblePlayer.id === this.peerId) {
-        const speedPct = Math.max(0, 1 - (distLocal / 12));
-        AudioAssets.setHeartbeatBpm(60 + speedPct * 90); // upto 150 bpm!
-        document.getElementById('heartbeat-vignette').classList.add('danger');
-      }
-    } else {
-      if (this.granny.state === 'chase') {
-        // Lost player, search last known position
-        this.granny.state = 'search';
-      }
-      
-      // Standard slow heartbeat
-      AudioAssets.setHeartbeatBpm(60);
-      document.getElementById('heartbeat-vignette').classList.remove('danger');
-    }
+      // 2. Check remote peers
+      Object.keys(this.peers).forEach(id => {
+        const peer = this.peers[id];
+        if (!peer.playerMesh || !this.players[id] || this.players[id].isUnconscious) return;
+        
+        const peerVec = new THREE.Vector3(peer.playerMesh.position.x, grannyPos.y, peer.playerMesh.position.z);
+        const dist = grannyPos.distanceTo(peerVec);
+        
+        if (dist < this.granny.sightDistance && dist < closestDist) {
+          if (this.checkLineOfSight(grannyPos, peerVec)) {
+            visiblePlayer = { pos: peerVec, id: id };
+            closestDist = dist;
+          }
+        }
+      });
 
-    // Move towards target
-    let speed = this.granny.state === 'chase' ? this.granny.chaseSpeed : this.granny.speed;
-    let target = this.granny.targetPos;
-
-    if (this.granny.state === 'patrol') {
-      // Pick patrol nodes
-      target = this.granny.patrolNodes[this.granny.currentNodeIndex];
-      const distToNode = grannyPos.distanceTo(target);
-      if (distToNode < 1.0) {
-        this.granny.currentNodeIndex = (this.granny.currentNodeIndex + 1) % this.granny.patrolNodes.length;
+      // Handle states
+      if (visiblePlayer) {
+        // Switch to chasing
+        if (this.granny.state !== 'chase') {
+          // Play stinger or scream dynamically
+          AudioAssets.playJumpscare();
+        }
+        this.granny.state = 'chase';
+        this.granny.targetPos.copy(visiblePlayer.pos);
+        
+        // Heartbeat pulse speedup for nearby local player
+        if (visiblePlayer.id === this.peerId) {
+          const speedPct = Math.max(0, 1 - (distLocal / 12));
+          AudioAssets.setHeartbeatBpm(60 + speedPct * 90); // upto 150 bpm!
+          const hbVig = document.getElementById('heartbeat-vignette');
+          if (hbVig) hbVig.classList.add('danger');
+        }
+      } else {
+        if (this.granny.state === 'chase') {
+          // Lost player, search last known position
+          this.granny.state = 'search';
+        }
+        
+        // Standard slow heartbeat
+        AudioAssets.setHeartbeatBpm(60);
+        const hbVig = document.getElementById('heartbeat-vignette');
+        if (hbVig) hbVig.classList.remove('danger');
       }
-    } else if (this.granny.state === 'search') {
-      const distToSearch = grannyPos.distanceTo(target);
-      if (distToSearch < 1.0) {
-        // Finished searching noise source, return to patrol
-        this.granny.state = 'patrol';
-      }
-    }
 
-    // Simple pathing towards target - secure against NaN divide-by-zero
-    const distToTarget = grannyPos.distanceTo(target);
-    if (distToTarget > 0.05) {
-      const dir = new THREE.Vector3().subVectors(target, grannyPos).normalize();
-      grannyPos.addScaledVector(dir, Math.min(distToTarget, speed * delta));
-      
-      // Rotate to face direction of travel
-      if (dir.lengthSq() > 0.01) {
-        const angle = Math.atan2(dir.x, dir.z);
-        this.granny.mesh.rotation.y = angle;
-        this.granny.ry = angle;
-      }
-    }
+      // Move towards target
+      let speed = this.granny.state === 'chase' ? this.granny.chaseSpeed : this.granny.speed;
+      let target = this.granny.targetPos;
 
-    // Sync coordinates
-    this.granny.x = grannyPos.x;
-    this.granny.y = grannyPos.y;
-    this.granny.z = grannyPos.z;
-
-    // Check hit condition
-    const attackRange = 1.5;
-    if (distLocal < attackRange && !this.localPlayer.isUnconscious) {
-      this.grannyTriggerAttack(this.peerId);
-    }
-    Object.keys(this.peers).forEach(id => {
-      const peer = this.peers[id];
-      if (peer.playerMesh && !this.players[id].isUnconscious) {
-        const d = grannyPos.distanceTo(peer.playerMesh.position);
-        if (d < attackRange) {
-          this.grannyTriggerAttack(id);
+      if (this.granny.state === 'patrol') {
+        // Pick patrol nodes
+        if (this.granny.patrolNodes && this.granny.patrolNodes.length > 0) {
+          target = this.granny.patrolNodes[this.granny.currentNodeIndex];
+          const distToNode = grannyPos.distanceTo(target);
+          if (distToNode < 1.0) {
+            this.granny.currentNodeIndex = (this.granny.currentNodeIndex + 1) % this.granny.patrolNodes.length;
+          }
+        }
+      } else if (this.granny.state === 'search') {
+        const distToSearch = grannyPos.distanceTo(target);
+        if (distToSearch < 1.0) {
+          // Finished searching noise source, return to patrol
+          this.granny.state = 'patrol';
         }
       }
-    });
 
-    // Bat swing animation (cos swing)
-    this.granny.animTime += delta * 5;
-    const bat = this.granny.mesh.getObjectByName('bat');
-    if (bat) {
-      bat.rotation.x = (Math.PI / 4) + Math.cos(this.granny.animTime) * 0.3;
+      // Simple pathing towards target - secure against NaN divide-by-zero
+      const distToTarget = grannyPos.distanceTo(target);
+      if (distToTarget > 0.05) {
+        const dir = new THREE.Vector3().subVectors(target, grannyPos).normalize();
+        grannyPos.addScaledVector(dir, Math.min(distToTarget, speed * delta));
+        
+        // Rotate to face direction of travel
+        if (dir.lengthSq() > 0.01) {
+          const angle = Math.atan2(dir.x, dir.z);
+          this.granny.mesh.rotation.y = angle;
+          this.granny.ry = angle;
+        }
+      }
+
+      // Sync coordinates
+      this.granny.x = grannyPos.x;
+      this.granny.y = grannyPos.y;
+      this.granny.z = grannyPos.z;
+
+      // Check hit condition
+      const attackRange = 1.5;
+      if (this.localPlayer && distLocal < attackRange && !this.localPlayer.isUnconscious) {
+        this.grannyTriggerAttack(this.peerId);
+      }
+      Object.keys(this.peers).forEach(id => {
+        const peer = this.peers[id];
+        if (peer.playerMesh && this.players[id] && !this.players[id].isUnconscious) {
+          const d = grannyPos.distanceTo(peer.playerMesh.position);
+          if (d < attackRange) {
+            this.grannyTriggerAttack(id);
+          }
+        }
+      });
+
+      // Bat swing animation (cos swing)
+      this.granny.animTime += delta * 5;
+      const bat = this.granny.mesh.getObjectByName('bat');
+      if (bat) {
+        bat.rotation.x = (Math.PI / 4) + Math.cos(this.granny.animTime) * 0.3;
+      }
+    } catch (e) {
+      console.error("[Game AI] updateGrannyAI error:", e);
     }
   },
 
   checkLineOfSight(from, to) {
-    const dist = from.distanceTo(to);
-    if (dist < 0.2) return true; // Too close, instantly visible!
-    
-    // Basic direction check - secure against NaN divide-by-zero
-    const dir = new THREE.Vector3().subVectors(to, from).normalize();
-    const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.granny.ry);
-    
-    const dot = forward.dot(dir);
-    if (dot < Math.cos(this.granny.sightAngle)) return false; // Out of visual cone
+    try {
+      const dist = from.distanceTo(to);
+      if (dist < 0.2) return true; // Too close, instantly visible!
+      
+      // Basic direction check - secure against NaN divide-by-zero
+      const dir = new THREE.Vector3().subVectors(to, from).normalize();
+      const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.granny.ry || 0);
+      
+      const dot = forward.dot(dir);
+      if (dot < Math.cos(this.granny.sightAngle)) return false; // Out of visual cone
 
-    // Check physics walls intersection (simplified ray intersect)
-    const ray = new THREE.Raycaster(from, dir, 0.1, dist);
-    const intersects = ray.intersectObjects(this.scene.children, true);
-    
-    // If any intersection is a wall, block sight
-    for (let i = 0; i < intersects.length; i++) {
-      if (intersects[i].object.geometry.type === 'BoxGeometry' && 
-          intersects[i].object.material.color && 
-          intersects[i].object.material.color.getHex() === 0x241d1d) {
-        return false; // wall blocks sight!
+      // Check physics walls intersection (simplified ray intersect)
+      const ray = new THREE.Raycaster(from, dir, 0.1, dist);
+      const intersects = ray.intersectObjects(this.scene.children, true);
+      
+      // If any intersection is a wall, block sight
+      for (let i = 0; i < intersects.length; i++) {
+        const obj = intersects[i].object;
+        if (!obj || !obj.geometry) continue;
+
+        if (obj.geometry.type === 'BoxGeometry') {
+          const mat = obj.material;
+          if (mat) {
+            let colors = [];
+            if (Array.isArray(mat)) {
+              colors = mat.map(m => m.color).filter(Boolean);
+            } else if (mat.color) {
+              colors = [mat.color];
+            }
+
+            const isWallColor = colors.some(c => typeof c.getHex === 'function' && c.getHex() === 0x241d1d);
+            if (isWallColor) {
+              return false; // wall blocks sight!
+            }
+          }
+        }
       }
+      return true;
+    } catch (e) {
+      console.error("[Game AI] checkLineOfSight error:", e);
+      return false; // Fallback to not visible to prevent freeze
     }
-    return true;
   },
 
   grannyTriggerAttack(playerId) {
@@ -1845,34 +1872,53 @@ const Game = {
   },
 
   recalculateCollisionWalls() {
-    this.walls = [];
-    
-    // Add grid static walls
-    const cellSize = 4;
-    const offset = -20 + cellSize/2;
-    const wallGeo = new THREE.BoxGeometry(4, 4, 0.3);
-    
-    // Re-add outer/inner static wall boxes
-    this.scene.children.forEach(child => {
-      if (child.geometry && child.geometry.type === 'BoxGeometry' && 
-          child.material.color && child.material.color.getHex() === 0x241d1d) {
-        this.walls.push(new THREE.Box3().setFromObject(child));
-      }
-      // Re-add furniture cabinets
-      if (child.geometry && child.geometry.type === 'BoxGeometry' && 
-          child.material.color && child.material.color.getHex() === 0x3d281a) {
-        this.walls.push(new THREE.Box3().setFromObject(child));
-      }
-    });
+    try {
+      this.walls = [];
+      
+      // Add grid static walls
+      const cellSize = 4;
+      const offset = -20 + cellSize/2;
+      const wallGeo = new THREE.BoxGeometry(4, 4, 0.3);
+      
+      // Re-add outer/inner static wall boxes
+      this.scene.children.forEach(child => {
+        if (!child) return;
 
-    // Add closed doors to block movement
-    Object.keys(this.doors).forEach(id => {
-      const door = this.doors[id];
-      if (!door.isOpen) {
-        const doorMesh = door.mesh.children[0];
-        this.walls.push(new THREE.Box3().setFromObject(doorMesh));
-      }
-    });
+        if (child.geometry && child.geometry.type === 'BoxGeometry') {
+          const mat = child.material;
+          if (mat) {
+            let colors = [];
+            if (Array.isArray(mat)) {
+              colors = mat.map(m => m.color).filter(Boolean);
+            } else if (mat.color) {
+              colors = [mat.color];
+            }
+
+            // Static walls (0x241d1d)
+            if (colors.some(c => typeof c.getHex === 'function' && c.getHex() === 0x241d1d)) {
+              this.walls.push(new THREE.Box3().setFromObject(child));
+            }
+            // Cabinets (0x3d281a)
+            else if (colors.some(c => typeof c.getHex === 'function' && c.getHex() === 0x3d281a)) {
+              this.walls.push(new THREE.Box3().setFromObject(child));
+            }
+          }
+        }
+      });
+
+      // Add closed doors to block movement
+      Object.keys(this.doors).forEach(id => {
+        const door = this.doors[id];
+        if (door && !door.isOpen && door.mesh) {
+          const doorMesh = door.mesh.children[0];
+          if (doorMesh) {
+            this.walls.push(new THREE.Box3().setFromObject(doorMesh));
+          }
+        }
+      });
+    } catch (e) {
+      console.error("[Game Physics] recalculateCollisionWalls error:", e);
+    }
   },
 
   // ==========================================
