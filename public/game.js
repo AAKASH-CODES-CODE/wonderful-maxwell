@@ -858,7 +858,7 @@ const Game = {
           const deltaY = touch.clientY - prevTouchY;
           
           this.localPlayer.ry -= deltaX * 0.006;
-          this.localPlayer.rx -= deltaY * 0.006;
+          this.localPlayer.rx += deltaY * 0.006; // Fix touch Y-axis look inversion
           this.localPlayer.rx = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, this.localPlayer.rx));
           
           this.camera.rotation.set(0, 0, 0);
@@ -917,7 +917,7 @@ const Game = {
     
     // Spooky dense exponential fog - reduced density so players can see clearly
     this.scene.background = new THREE.Color(0x050507);
-    this.scene.fog = new THREE.FogExp2(0x050507, 0.05);
+    this.scene.fog = new THREE.FogExp2(0x050507, 0.025); // Thinner fog for better visibility
 
     this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
     
@@ -936,7 +936,7 @@ const Game = {
     container.appendChild(this.renderer.domElement);
 
     // Ambient light - slightly brighter so rooms are visible
-    const ambient = new THREE.AmbientLight(0x222233);
+    const ambient = new THREE.AmbientLight(0x555566, 1.2); // Brighter ambient light
     this.scene.add(ambient);
 
     // Handle resize
@@ -966,7 +966,7 @@ const Game = {
 
       // Rotate camera
       this.localPlayer.ry -= e.movementX * this.mouseSensitivity;
-      this.localPlayer.rx -= e.movementY * this.mouseSensitivity;
+      this.localPlayer.rx += e.movementY * this.mouseSensitivity; // Fix Y-axis look inversion
 
       // Clamp vertical look
       this.localPlayer.rx = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, this.localPlayer.rx));
@@ -994,7 +994,7 @@ const Game = {
   },
 
   setupFlashlight() {
-    const spot = new THREE.SpotLight(0xfff8e7, 3.5, 25, Math.PI / 5, 0.7, 1.2);
+    const spot = new THREE.SpotLight(0xfff8e7, 6.0, 32, Math.PI / 4, 0.8, 1.0); // Boosted range, intensity, and cone
     spot.castShadow = true;
     spot.shadow.mapSize.width = 512;
     spot.shadow.mapSize.height = 512;
@@ -1337,7 +1337,7 @@ const Game = {
     group.add(eyeR);
 
     // Sync Spotlight for flashlight
-    const spot = new THREE.SpotLight(0xfff8e7, 1.5, 15, Math.PI / 5, 0.7, 1.2);
+    const spot = new THREE.SpotLight(0xfff8e7, 3.0, 22, Math.PI / 4, 0.8, 1.0); // Boosted remote player spotlight
     spot.name = 'flashlight';
     spot.position.set(0, 1.4, 0.2);
     spot.visible = false;
