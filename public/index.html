@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEATHLY SILENCE | Multiplayer Horror Game</title>
+  <!-- Google Fonts for Creepy and Modern looks -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Three.js (r128) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- PeerJS for Serverless WebRTC Multiplayer & Voice -->
+  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+</head>
+<body>
+  <!-- Ambient Audio triggers and background static -->
+  <div class="scanlines"></div>
+  <div class="noise-overlay"></div>
+
+  <!-- MAIN MENU SCREEN -->
+  <div id="main-menu" class="menu-container">
+    <div class="menu-inner">
+      <h1 class="glitch-title" data-text="DEATHLY SILENCE">DEATHLY SILENCE</h1>
+      <p class="subtitle">The Granny hears you in real life. Keep quiet to survive.</p>
+
+      <div class="menu-card">
+        <!-- Step 1: Mic Check & Name -->
+        <div id="setup-panel" class="menu-section active">
+          <div class="input-group">
+            <label for="player-name">ENTER YOUR NAME</label>
+            <input type="text" id="player-name" placeholder="Survivor" maxlength="12" autocomplete="off">
+          </div>
+
+          <div class="mic-setup">
+            <label>MICROPHONE CONFIGURATION</label>
+            <p class="small-text">Allow microphone access to communicate and enable voice-reactive AI. Use headphones!</p>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+              <button id="btn-request-mic" class="btn btn-secondary" style="flex: 1;">ALLOW MICROPHONE</button>
+              <button id="btn-skip-mic" class="btn btn-text" style="flex: 1; border: 1px dashed #4a3e3e; font-size: 0.9rem;">PLAY WITHOUT MIC</button>
+            </div>
+            
+            <div id="mic-visualizer-container" class="disabled">
+              <canvas id="mic-visualizer" width="300" height="40"></canvas>
+              <div class="mic-indicator-label">Mic Activity / Voice Sensitivity</div>
+              <div class="threshold-slider">
+                <span>Mic Sensitivity Threshold:</span>
+                <input type="range" id="mic-threshold" min="0" max="100" value="15">
+              </div>
+            </div>
+          </div>
+
+          <div class="action-buttons">
+            <button id="btn-go-lobby" class="btn btn-primary" disabled>PROCEED TO LOBBY</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Host / Join Room -->
+        <div id="lobby-panel" class="menu-section">
+          <div class="lobby-actions">
+            <div class="lobby-card">
+              <h3>HOST A NEW ESCAPE</h3>
+              <p>Start a new instance and invite other players on your local network.</p>
+              <button id="btn-host-room" class="btn btn-primary">CREATE ROOM</button>
+            </div>
+            
+            <div class="lobby-card-divider"><span>OR</span></div>
+            
+            <div class="lobby-card">
+              <h3>JOIN EXISTING ESCAPE</h3>
+              <p>Enter the Room Code shared by the host.</p>
+              <input type="text" id="join-room-code" placeholder="ROOM CODE (E.G. A7B9)" maxlength="4" autocomplete="off">
+              <button id="btn-join-room" class="btn btn-secondary">JOIN ROOM</button>
+            </div>
+          </div>
+          <button id="btn-back-setup" class="btn btn-text">&larr; BACK</button>
+        </div>
+
+        <!-- Step 3: Room Lobby Waiting -->
+        <div id="waiting-panel" class="menu-section">
+          <h3>ROOM CODE: <span id="display-room-code" class="highlight">----</span></h3>
+          <p class="status-message">Waiting for players to connect...</p>
+          
+          <div class="players-list-container">
+            <h4>CONNECTED SURVIVORS:</h4>
+            <ul id="connected-players-list">
+              <!-- Dynamically populated -->
+            </ul>
+          </div>
+
+          <div class="action-buttons">
+            <button id="btn-start-game" class="btn btn-primary" disabled>START ESCAPE (HOST ONLY)</button>
+            <button id="btn-leave-lobby" class="btn btn-text">LEAVE ROOM</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls & Guide -->
+      <div class="menu-instructions">
+        <h3>SURVIVAL GUIDE</h3>
+        <div class="grid-instructions">
+          <div>
+            <strong>CONTROLS:</strong>
+            <ul>
+              <li><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> - Move</li>
+              <li><span class="key">Mouse</span> - Look around</li>
+              <li><span class="key">F</span> - Flashlight (ON/OFF)</li>
+              <li><span class="key">C</span> - Crouch (Moves silently!)</li>
+              <li><span class="key">E</span> - Interact (Doors, Items, Drawers)</li>
+            </ul>
+          </div>
+          <div>
+            <strong>ESCAPE TARGETS:</strong>
+            <ul>
+              <li>Locate the <span class="text-yellow">Yellow Brass Key</span> to unlock the padlock.</li>
+              <li>Find the <span class="text-red">Code Note</span> for the 4-digit electronic lock.</li>
+              <li>Obtain the <span class="text-blue">Crowbar</span> to pry off the wooden planks.</li>
+              <li>Granny reacts to footstep noise and <strong>your real microphone voice</strong>. Shhh!</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD INTERFACE (IN-GAME) -->
+  <div id="game-hud" style="display: none;">
+    <!-- Crosshair / Interaction Reticle -->
+    <div id="crosshair">
+      <div id="crosshair-dot"></div>
+      <div id="interaction-prompt">PRESS <span class="key">E</span> TO INTERACT</div>
+    </div>
+
+    <!-- Inventory Display -->
+    <div id="inventory-bar">
+      <div class="inventory-slot" id="slot-flashlight">
+        <span class="slot-icon">🔦</span>
+        <span class="slot-key">F</span>
+        <span class="slot-label">FLASHLIGHT</span>
+      </div>
+      <div class="inventory-slot" id="slot-hand">
+        <span class="slot-icon">🖐️</span>
+        <span class="slot-key">E</span>
+        <span class="slot-label" id="held-item-name">EMPTY HANDS</span>
+      </div>
+    </div>
+
+    <!-- Screen Indicators -->
+    <div class="hud-top-left">
+      <div class="room-indicator">ROOM: <span id="hud-room-code">----</span></div>
+      <div class="player-mic-status">
+        <span class="status-dot green" id="mic-status-dot"></span>
+        <span id="mic-status-text">MIC ACTIVE</span>
+        <div class="mini-volume-bar"><div id="mini-volume-fill"></div></div>
+      </div>
+    </div>
+
+    <div class="hud-top-right">
+      <h4>SURVIVORS IN HOUSE:</h4>
+      <ul id="hud-players-list">
+        <!-- Player list with speak status icons -->
+      </ul>
+    </div>
+
+    <!-- Escape items status -->
+    <div class="hud-bottom-left">
+      <div class="escape-objective">
+        <h4>ESCAPE PROGRESS:</h4>
+        <div class="objective-item" id="obj-padlock">🔒 Padlock Chain Locked</div>
+        <div class="objective-item" id="obj-code">📟 Code Lock Locked</div>
+        <div class="objective-item" id="obj-planks">🚧 Wooden Planks Intact</div>
+      </div>
+    </div>
+
+    <!-- Heartbeat Screen Flashing and Spook cues -->
+    <div id="heartbeat-vignette"></div>
+    
+    <!-- Dynamic sound detector warn -->
+    <div id="noise-warning">GRANNY HEARD YOU!</div>
+
+    <!-- Mobile Virtual Controls -->
+    <div id="mobile-controls" style="display: none;">
+      <div id="joystick-zone">
+        <div id="joystick-base">
+          <div id="joystick-knob"></div>
+        </div>
+      </div>
+      <div id="mobile-action-buttons">
+        <button id="btn-mobile-flashlight" class="mobile-btn">🔦</button>
+        <button id="btn-mobile-crouch" class="mobile-btn">🧘</button>
+        <button id="btn-mobile-interact" class="mobile-btn">🤚</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN OVERLAYS -->
+  
+  <!-- Jumpscare Overlay -->
+  <div id="jumpscare-overlay" style="display: none;">
+    <div class="jumpscare-bg"></div>
+    <div class="jumpscare-granny-face">💀</div>
+    <div class="jumpscare-text">GRANNY CAUGHT YOU!</div>
+  </div>
+
+  <!-- Knocked Out / Spectator / Waking Up Screen -->
+  <div id="knockout-overlay" style="display: none;">
+    <div class="knockout-content">
+      <h2>YOU ARE UNCONSCIOUS</h2>
+      <p>Granny knocked you out. Waking up in <span id="knockout-timer">5</span> seconds...</p>
+      <div class="heartbeat-pulse"></div>
+    </div>
+  </div>
+
+  <!-- Escape Victory Screen -->
+  <div id="victory-overlay" style="display: none;">
+    <div class="victory-content">
+      <h1 class="victory-title">YOU ESCAPED!</h1>
+      <p>You outsmarted Granny and escaped the house of horrors.</p>
+      <button id="btn-restart" class="btn btn-primary">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <!-- 3D Game Canvas Area -->
+  <div id="game-canvas-container"></div>
+
+  <!-- Load procedural synthesizers, then main game engine -->
+  <script src="audio_assets.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
