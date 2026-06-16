@@ -602,6 +602,11 @@ const Game = {
           item.pickedUp = itemState.pickedUp;
           if (itemState.pickedUp) {
             item.mesh.visible = false;
+          } else {
+            item.mesh.visible = true;
+            if (itemState.x !== undefined) {
+              item.mesh.position.set(itemState.x, itemState.y, itemState.z);
+            }
           }
         }
       });
@@ -1018,8 +1023,7 @@ const Game = {
   // BUILDING THE 3D MAP
   // ==========================================
   buildHouseMap() {
-    // 0 = empty floor, 1 = Wall, 2 = Door, 3 = Main Exit Door, 5 = Drawer
-    this.mapData = [
+    this.mapDataFloor0 = [
       [1, 1, 1, 1, 1, 1, 3, 1, 1, 1],
       [1, 0, 0, 0, 1, 0, 0, 0, 5, 1],
       [1, 0, 6, 0, 1, 0, 1, 1, 0, 1],
@@ -1032,9 +1036,31 @@ const Game = {
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     ];
 
+    this.mapDataFloor1 = [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 1, 0, 0, 0, 5, 1],
+      [1, 0, 0, 0, 1, 0, 1, 1, 0, 1],
+      [1, 0, 0, 0, 2, 0, 2, 0, 0, 1],
+      [1, 1, 2, 1, 1, 0, 1, 1, 2, 1],
+      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1],
+      [1, 0, 5, 0, 2, 0, 1, 0, 0, 1],
+      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1],
+      [1, 1, 1, 1, 1, 0, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    ];
+
+    // Load textures
+    const textureLoader = new THREE.TextureLoader();
+    this.wallTexture = textureLoader.load('wall_texture.png');
+    this.wallTexture.wrapS = THREE.RepeatWrapping;
+    this.wallTexture.wrapT = THREE.RepeatWrapping;
+    this.wallTexture.repeat.set(1, 1);
+
+    this.doorTexture = textureLoader.load('door_texture.png');
+
     const wallGeo = new THREE.BoxGeometry(4, 4, 0.3);
     const wallMat = new THREE.MeshStandardMaterial({ 
-      color: 0x241d1d, 
+      map: this.wallTexture, 
       roughness: 0.9, 
       metalness: 0.1 
     });
@@ -1051,54 +1077,116 @@ const Game = {
       roughness: 0.9 
     });
 
-    // Floor Mesh
+    this.walkableObjects = [];
+
+    // Floor Mesh (Ground Floor)
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.position.set(0, -0.1, 0);
     floor.receiveShadow = true;
     this.scene.add(floor);
+    this.walkableObjects.push(floor);
 
-    // Ceiling Mesh
-    const ceiling = new THREE.Mesh(ceilingGeo, ceilingMat);
-    ceiling.position.set(0, 4, 0);
-    this.scene.add(ceiling);
-
-    // Build grid layout (40x40 area centered)
+    // First floor tiles (placed at y = 3.9 so top matches y = 4.0)
+    // Omit Column 5, Row 8 for the stairs hole
+    const tileGeo = new THREE.BoxGeometry(4, 0.2, 4);
     const cellSize = 4;
     const offset = -20 + cellSize/2; // -18 starting point
 
     for (let r = 0; r < 10; r++) {
       for (let c = 0; c < 10; c++) {
-        const val = this.mapData[r][c];
+        if (r === 8 && c === 5) continue; // Staircase hole
+        
+        const x = offset + c * cellSize;
+        const z = offset + r * cellSize;
+        const tile = new THREE.Mesh(tileGeo, floorMat);
+        tile.position.set(x, 3.9, z);
+        tile.receiveShadow = true;
+        this.scene.add(tile);
+        this.walkableObjects.push(tile);
+      }
+    }
+
+    // Ceiling Mesh (above Floor 1)
+    const ceiling = new THREE.Mesh(ceilingGeo, ceilingMat);
+    ceiling.position.set(0, 8.0, 0);
+    this.scene.add(ceiling);
+
+    // Build Ground Floor walls & elements (height 0 to 4)
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        const val = this.mapDataFloor0[r][c];
         const x = offset + c * cellSize;
         const z = offset + r * cellSize;
 
         if (val === 1) {
-          // Check neighbors to orient walls cleanly (horizontal/vertical)
-          // Simple: horizontal boxes for row blocks
           const wall = new THREE.Mesh(wallGeo, wallMat);
           wall.position.set(x, 2, z);
           wall.castShadow = true;
           wall.receiveShadow = true;
+          wall.userData.isCollisionWall = true;
           this.scene.add(wall);
-          this.walls.push(new THREE.Box3().setFromObject(wall));
         } 
         else if (val === 2) {
-          // Normal interior swinging door
-          this.createDoor(r + '_' + c, x, z, false);
+          this.createDoor(r + '_' + c, x, z, false, 0.0);
         }
         else if (val === 3) {
-          // The critical exit door
-          this.createDoor('exit', x, z, true);
+          this.createDoor('exit', x, z, true, 0.0);
         }
         else if (val === 5) {
-          // Drawer / Search Container
-          this.createDrawerCabinet(r + '_' + c, x, z);
+          this.createDrawerCabinet(r + '_' + c, x, z, 0.0);
         }
         else if (val === 6) {
-          // Table / Obstacle
-          this.createTable(x, z);
+          this.createTable(x, z, 0.0);
         }
       }
+    }
+
+    // Build First Floor walls & elements (height 4 to 8)
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        const val = this.mapDataFloor1[r][c];
+        const x = offset + c * cellSize;
+        const z = offset + r * cellSize;
+
+        if (val === 1) {
+          const wall = new THREE.Mesh(wallGeo, wallMat);
+          wall.position.set(x, 6, z); // center y = 6 (ranges from 4 to 8)
+          wall.castShadow = true;
+          wall.receiveShadow = true;
+          wall.userData.isCollisionWall = true;
+          this.scene.add(wall);
+        } 
+        else if (val === 2) {
+          this.createDoor('f1_' + r + '_' + c, x, z, false, 4.0);
+        }
+        else if (val === 5) {
+          this.createDrawerCabinet('f1_' + r + '_' + c, x, z, 4.0);
+        }
+      }
+    }
+
+    // Build Staircase (Column 5, Row 8 to 7, going from z = 16 to z = 8, y = 0 to y = 4)
+    const stairX = 2;
+    const stepsCount = 12;
+    const stairZStart = 16;
+    const stairZEnd = 8;
+    const stepWidth = 3.2;
+    const stepHeight = 0.25;
+    const stepDepth = 0.75;
+    const stairMat = new THREE.MeshStandardMaterial({ color: 0x3d281a, roughness: 0.9 });
+
+    for (let i = 0; i < stepsCount; i++) {
+      const t = i / (stepsCount - 1);
+      const stepY = t * 4.0;
+      const stepZ = stairZStart - t * (stairZStart - stairZEnd);
+
+      const stepGeo = new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth);
+      const step = new THREE.Mesh(stepGeo, stairMat);
+      step.position.set(stairX, stepY - stepHeight / 2, stepZ);
+      step.castShadow = true;
+      step.receiveShadow = true;
+      this.scene.add(step);
+      this.walkableObjects.push(step);
     }
 
     // Set patrol nodes for Granny based on empty cells
@@ -1112,13 +1200,14 @@ const Game = {
     ];
   },
 
-  createDoor(id, x, z, isExit = false) {
+  createDoor(id, x, z, isExit = false, yOffset = 0.0) {
     const hinge = new THREE.Group();
-    hinge.position.set(x - 2, 0, z); // pivot at left edge
+    hinge.position.set(x - 2, yOffset, z); // pivot at left edge
     
     const doorGeo = new THREE.BoxGeometry(3.8, 3.2, 0.15);
     const doorMat = new THREE.MeshStandardMaterial({ 
-      color: isExit ? 0x6e1b1b : 0x473124, 
+      map: this.doorTexture,
+      color: isExit ? 0x6e1b1b : 0xffffff, 
       roughness: 0.8 
     });
     
@@ -1130,11 +1219,11 @@ const Game = {
     
     // Visual handle
     const handleGeo = new THREE.SphereGeometry(0.1, 8, 8);
-    const handleMat = new THREE.MeshStandardMaterial({ color: 0xc4a429, metalness: 0.8 });
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0xc4a429, metalness: 0.8, roughness: 0.2 });
     const handle = new THREE.Mesh(handleGeo, handleMat);
     handle.position.set(3.4, 1.5, 0.1);
     hinge.add(handle);
-
+ 
     // If main exit door, visually add barricade planks, padlock chain
     if (isExit) {
       // Wood plank
@@ -1144,7 +1233,7 @@ const Game = {
       plank.name = 'plank';
       plank.position.set(1.9, 1.8, 0.2);
       hinge.add(plank);
-
+ 
       // Padlock
       const padlockGeo = new THREE.BoxGeometry(0.25, 0.3, 0.1);
       const padlockMat = new THREE.MeshStandardMaterial({ color: 0xdcae1d, metalness: 0.8 });
@@ -1153,16 +1242,17 @@ const Game = {
       padlock.position.set(1.9, 1.3, 0.2);
       hinge.add(padlock);
     }
-
+ 
     this.scene.add(hinge);
     
     this.doors[id] = {
       mesh: hinge,
       isOpen: false,
       isExit: isExit,
-      x, z
+      x, z,
+      yOffset
     };
-
+ 
     // Add to interactives raycast target
     this.interactives.push({
       mesh: doorMesh,
@@ -1170,23 +1260,24 @@ const Game = {
       id: id,
       distance: 3.5
     });
-
+ 
     // Add box to physics walls (only if door is shut)
     const box = new THREE.Box3().setFromObject(doorMesh);
     this.walls.push(box);
   },
-
-  createDrawerCabinet(id, x, z) {
+ 
+  createDrawerCabinet(id, x, z, yOffset = 0.0) {
     const cabinet = new THREE.Group();
-    cabinet.position.set(x, 0, z);
-
+    cabinet.position.set(x, yOffset, z);
+ 
     const frameGeo = new THREE.BoxGeometry(2, 2.5, 1.5);
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x3d281a, roughness: 0.9 });
     const frame = new THREE.Mesh(frameGeo, frameMat);
     frame.position.set(0, 1.25, 0);
     frame.castShadow = true;
+    frame.userData.isCollisionWall = true;
     cabinet.add(frame);
-
+ 
     // Interactive drawer face
     const drawerGeo = new THREE.BoxGeometry(1.8, 0.8, 1.4);
     const drawerMat = new THREE.MeshStandardMaterial({ color: 0x5e3f2b, roughness: 0.8 });
@@ -1195,15 +1286,15 @@ const Game = {
     drawer.position.set(0, 0.6, 0.1); // slightly forward
     drawer.castShadow = true;
     cabinet.add(drawer);
-
+ 
     const handleGeo = new THREE.BoxGeometry(0.4, 0.1, 0.1);
     const handleMat = new THREE.MeshStandardMaterial({ color: 0x000, metalness: 0.6 });
     const handle = new THREE.Mesh(handleGeo, handleMat);
     handle.position.set(0, 0.6, 0.85);
     cabinet.add(handle);
-
+ 
     this.scene.add(cabinet);
-
+ 
     this.interactives.push({
       mesh: drawer,
       type: 'drawer',
@@ -1211,22 +1302,23 @@ const Game = {
       state: 'closed', // 'closed', 'open'
       group: cabinet
     });
-
+ 
     // Add collision block
     this.walls.push(new THREE.Box3().setFromObject(frame));
   },
-
-  createTable(x, z) {
+ 
+  createTable(x, z, yOffset = 0.0) {
     const table = new THREE.Group();
-    table.position.set(x, 0, z);
-
+    table.position.set(x, yOffset, z);
+ 
     const topGeo = new THREE.BoxGeometry(2.5, 0.15, 1.5);
     const topMat = new THREE.MeshStandardMaterial({ color: 0x473224 });
     const top = new THREE.Mesh(topGeo, topMat);
     top.position.set(0, 1.0, 0);
     top.castShadow = true;
+    top.userData.isCollisionWall = true;
     table.add(top);
-
+ 
     // Leg mesh
     const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.0);
     const legMat = new THREE.MeshStandardMaterial({ color: 0x2d1d14 });
@@ -1241,7 +1333,7 @@ const Game = {
       leg.castShadow = true;
       table.add(leg);
     });
-
+ 
     this.scene.add(table);
     this.walls.push(new THREE.Box3().setFromObject(top));
   },
@@ -1250,11 +1342,11 @@ const Game = {
   // SPAWNING GAME ESCAPE ITEMS
   // ==========================================
   spawnEscapeItems() {
-    // Spawns items at pre-defined search drawer locations
+    // Spawns items at pre-defined search drawer locations (some on Floor 0, some on Floor 1)
     const spawnPoints = [
       { x: -14, y: 1.2, z: -14, id: 'key' },
-      { x: 14, y: 1.2, z: 2, id: 'crowbar' },
-      { x: -6, y: 1.2, z: 6, id: 'code' }
+      { x: 14, y: 5.2, z: 2, id: 'crowbar' }, // Floor 1
+      { x: -6, y: 5.2, z: 6, id: 'code' }   // Floor 1
     ];
 
     // Shuffle spawn points slightly if host
@@ -1265,7 +1357,7 @@ const Game = {
     // 1. Brass Key (Yellow)
     const keyLoc = spawnPoints[0];
     const keyGroup = new THREE.Group();
-    keyGroup.position.set(keyLoc.x, 0.5, keyLoc.z);
+    keyGroup.position.set(keyLoc.x, keyLoc.y - 0.7, keyLoc.z);
     
     const ringGeo = new THREE.TorusGeometry(0.12, 0.04, 8, 16);
     const metalMat = new THREE.MeshStandardMaterial({ color: 0xdcae1d, metalness: 0.8, roughness: 0.2 });
@@ -1280,7 +1372,7 @@ const Game = {
     keyGroup.add(shaft);
 
     this.scene.add(keyGroup);
-    this.items['key'] = { mesh: keyGroup, type: 'key', pickedUp: false, x: keyLoc.x, z: keyLoc.z };
+    this.items['key'] = { mesh: keyGroup, type: 'key', pickedUp: false, x: keyLoc.x, y: keyLoc.y - 0.7, z: keyLoc.z };
     this.interactives.push({ mesh: ring, type: 'item', id: 'key', itemType: 'Brass Key' });
 
     // 2. Crowbar (Blue metal)
@@ -1288,11 +1380,11 @@ const Game = {
     const barGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.0);
     const barMat = new THREE.MeshStandardMaterial({ color: 0x1f5f8a, metalness: 0.9, roughness: 0.3 });
     const barMesh = new THREE.Mesh(barGeo, barMat);
-    barMesh.position.set(barLoc.x, 0.4, barLoc.z);
+    barMesh.position.set(barLoc.x, barLoc.y - 0.8, barLoc.z);
     barMesh.rotation.z = Math.PI / 4;
     this.scene.add(barMesh);
     
-    this.items['crowbar'] = { mesh: barMesh, type: 'crowbar', pickedUp: false, x: barLoc.x, z: barLoc.z };
+    this.items['crowbar'] = { mesh: barMesh, type: 'crowbar', pickedUp: false, x: barLoc.x, y: barLoc.y - 0.8, z: barLoc.z };
     this.interactives.push({ mesh: barMesh, type: 'item', id: 'crowbar', itemType: 'Crowbar' });
 
     // 3. Code Note (Paper flat plane)
@@ -1300,11 +1392,11 @@ const Game = {
     const noteGeo = new THREE.PlaneGeometry(0.3, 0.4);
     const noteMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, side: THREE.DoubleSide, roughness: 1.0 });
     const noteMesh = new THREE.Mesh(noteGeo, noteMat);
-    noteMesh.position.set(noteLoc.x, 0.6, noteLoc.z);
+    noteMesh.position.set(noteLoc.x, noteLoc.y - 0.6, noteLoc.z);
     noteMesh.rotation.x = Math.PI / 2;
     this.scene.add(noteMesh);
 
-    this.items['code'] = { mesh: noteMesh, type: 'code', pickedUp: false, x: noteLoc.x, z: noteLoc.z };
+    this.items['code'] = { mesh: noteMesh, type: 'code', pickedUp: false, x: noteLoc.x, y: noteLoc.y - 0.6, z: noteLoc.z };
     this.interactives.push({ mesh: noteMesh, type: 'item', id: 'code', itemType: 'Code Note' });
   },
 
@@ -1690,7 +1782,7 @@ const Game = {
         label = `E TO PICK UP ${foundInteract.itemType}`;
       }
 
-      prompt.innerHTML = label;
+prompt.innerHTML = label;
       prompt.style.display = 'block';
       this.activeInteract = foundInteract;
     } else {
@@ -1707,8 +1799,8 @@ const Game = {
     if (inter.type === 'item') {
       // Pick up item locally, place in heldItem slot
       if (this.localPlayer.heldItem) {
-        alert("Hands full! Drop or use current item first.");
-        return;
+        // Automatically drop currently held item
+        this.dropHeldItem();
       }
       
       this.localPlayer.heldItem = inter.id;
@@ -1805,7 +1897,59 @@ const Game = {
     }
   },
 
-  handleInteractEvent(interactId, itemType, senderId) {
+  dropHeldItem() {
+    try {
+      const itemId = this.localPlayer.heldItem;
+      if (!itemId) return;
+
+      this.localPlayer.heldItem = null;
+      const heldItemLabel = document.getElementById('held-item-name');
+      if (heldItemLabel) heldItemLabel.innerText = "EMPTY HANDS";
+
+      // Drop position: at player's current location, near the ground
+      const dropX = this.camera.position.x;
+      let groundY = 0;
+      if (this.walkableObjects && this.walkableObjects.length > 0) {
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(dropX, 20.0, this.camera.position.z),
+          new THREE.Vector3(0, -1, 0)
+        );
+        const intersects = ray.intersectObjects(this.walkableObjects, true);
+        if (intersects.length > 0) {
+          groundY = intersects[0].point.y;
+        }
+      }
+      
+      const dropY = groundY + 0.3;
+      const dropZ = this.camera.position.z;
+
+      // Update locally
+      const item = this.items[itemId];
+      if (item) {
+        item.pickedUp = false;
+        item.mesh.position.set(dropX, dropY, dropZ);
+        item.mesh.visible = true;
+      }
+
+      // Sync with host/network
+      if (this.isHost) {
+        this.handleInteractEvent(itemId, 'drop', this.peerId, dropX, dropY, dropZ);
+      } else {
+        this.sendNetworkPacket({
+          type: 'interact',
+          interactId: itemId,
+          itemType: 'drop',
+          x: dropX,
+          y: dropY,
+          z: dropZ
+        });
+      }
+    } catch (e) {
+      console.error("[Game Interaction] dropHeldItem error:", e);
+    }
+  },
+
+  handleInteractEvent(interactId, itemType, senderId, dropX, dropY, dropZ) {
     if (!this.isHost) return; // Host has state authority
 
     if (itemType === 'pickup') {
@@ -1813,6 +1957,17 @@ const Game = {
       if (item) {
         item.pickedUp = true;
         item.mesh.visible = false;
+      }
+    }
+    else if (itemType === 'drop') {
+      const item = this.items[interactId];
+      if (item) {
+        item.pickedUp = false;
+        const x = dropX !== undefined ? dropX : 0;
+        const y = dropY !== undefined ? dropY : 0.5;
+        const z = dropZ !== undefined ? dropZ : 0;
+        item.mesh.position.set(x, y, z);
+        item.mesh.visible = true;
       }
     }
     
@@ -1843,15 +1998,12 @@ const Game = {
       // Trigger Game Won!
       this.triggerVictory(true);
     }
-    
-    else {
-      // Normal door open/close
-      const door = this.doors[interactId];
-      if (door) {
-        const isOpen = (itemType === 'open');
-        door.isOpen = isOpen;
-        this.animateDoor(interactId, isOpen);
-      }
+    else if (this.doors[interactId]) {
+      const openState = (itemType === 'open');
+      this.doors[interactId].isOpen = openState;
+      
+      // Sync to everyone
+      this.animateDoor(interactId, openState);
     }
 
     // Force network state sync broadcast
@@ -1878,34 +2030,10 @@ const Game = {
     try {
       this.walls = [];
       
-      // Add grid static walls
-      const cellSize = 4;
-      const offset = -20 + cellSize/2;
-      const wallGeo = new THREE.BoxGeometry(4, 4, 0.3);
-      
-      // Re-add outer/inner static wall boxes
-      this.scene.children.forEach(child => {
-        if (!child) return;
-
-        if (child.geometry && child.geometry.type === 'BoxGeometry') {
-          const mat = child.material;
-          if (mat) {
-            let colors = [];
-            if (Array.isArray(mat)) {
-              colors = mat.map(m => m.color).filter(Boolean);
-            } else if (mat.color) {
-              colors = [mat.color];
-            }
-
-            // Static walls (0x241d1d)
-            if (colors.some(c => typeof c.getHex === 'function' && c.getHex() === 0x241d1d)) {
-              this.walls.push(new THREE.Box3().setFromObject(child));
-            }
-            // Cabinets (0x3d281a)
-            else if (colors.some(c => typeof c.getHex === 'function' && c.getHex() === 0x3d281a)) {
-              this.walls.push(new THREE.Box3().setFromObject(child));
-            }
-          }
+      // Recursively traverse scene to find all static collision walls and cabinet frames
+      this.scene.traverse(child => {
+        if (child && child.userData && child.userData.isCollisionWall) {
+          this.walls.push(new THREE.Box3().setFromObject(child));
         }
       });
 
@@ -1979,8 +2107,25 @@ const Game = {
       this.camera.position.z = testPosZ;
     }
 
+    // Snapping height physics (gravity and stairs climbing)
+    let groundY = 0;
+    if (this.walkableObjects && this.walkableObjects.length > 0) {
+      const ray = new THREE.Raycaster(
+        new THREE.Vector3(this.camera.position.x, 20.0, this.camera.position.z),
+        new THREE.Vector3(0, -1, 0)
+      );
+      const intersects = ray.intersectObjects(this.walkableObjects, true);
+      if (intersects.length > 0) {
+        groundY = intersects[0].point.y;
+      }
+    }
+    const eyeHeight = this.localPlayer.isCrouching ? 1.0 : 1.6;
+    // Smoothly snap player's Y coordinate to groundY + eyeHeight
+    this.camera.position.y += (groundY + eyeHeight - this.camera.position.y) * 0.15;
+
     // Sync variables
     this.localPlayer.x = this.camera.position.x;
+    this.localPlayer.y = this.camera.position.y;
     this.localPlayer.z = this.camera.position.z;
 
     // Trigger footstep sound and sound attraction if moving
@@ -2035,7 +2180,12 @@ const Game = {
 
     const itemsState = {};
     Object.keys(this.items).forEach(id => {
-      itemsState[id] = { pickedUp: this.items[id].pickedUp };
+      itemsState[id] = { 
+        pickedUp: this.items[id].pickedUp,
+        x: this.items[id].mesh.position.x,
+        y: this.items[id].mesh.position.y,
+        z: this.items[id].mesh.position.z
+      };
     });
 
     const doorsState = {};
