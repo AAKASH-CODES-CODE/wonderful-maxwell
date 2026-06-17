@@ -1031,22 +1031,22 @@ const Game = {
       [3, 0, 0, 0, 0, 0, 0, 0, 0, 1], // Exit door at Row 4, Col 0 (opens left)
       [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
       [1, 1, 2, 1, 1, 2, 1, 2, 2, 1],
-      [1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
-      [1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
+      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1], // Changed Col 8 from 1 to 0 for Bathroom 2
+      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1], // Changed Col 8 from 1 to 0 for Bathroom 2
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     ];
 
     this.mapDataFloor1 = [
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-      [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-      [1, 1, 2, 1, 1, 1, 2, 1, 1, 1],
-      [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-      [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-      [1, 1, 2, 1, 1, 2, 1, 2, 2, 1],
-      [1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
-      [1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], // Row 0: North outer wall
+      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1], // Row 1: Bed 1 (1-3), Wall (4), Hall (5), Wall (6), Bed 2 (7-8)
+      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1], // Row 2: Bed 1 (1-3), Wall (4), Hall (5), Wall (6), Bed 2 (7-8)
+      [1, 1, 1, 2, 1, 0, 1, 2, 1, 1], // Row 3: Doors to Bed 1 (Col 3) and Bed 2 (Col 7)
+      [1, 0, 0, 1, 0, 0, 0, 0, 0, 1], // Row 4: Kitchen (1-2), Wall (3), Hall/Stairs (4-8)
+      [1, 0, 0, 1, 0, 0, 0, 0, 0, 1], // Row 5: Kitchen (1-2), Wall (3), Hall/Stairs (4-8)
+      [1, 1, 2, 1, 1, 2, 1, 2, 2, 1], // Row 6: Doors to Kitchen (Col 2), lobby (Col 5), Bathrooms (Col 7, 8)
+      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1], // Row 7: Bed 3 (1-3), Wall (4), Lobby (5), Wall (6), Bath 1 (7), Bath 2 (8)
+      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1], // Row 8: Bed 3 (1-3), Wall (4), Lobby (5), Wall (6), Bath 1 (7), Bath 2 (8)
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]  // Row 9: South outer wall
     ];
 
     // Load textures
@@ -1064,6 +1064,7 @@ const Game = {
       roughness: 0.9, 
       metalness: 0.1 
     });
+    this.wallMat = wallMat;
     
     const floorGeo = new THREE.BoxGeometry(40, 0.2, 40);
     const floorMat = new THREE.MeshStandardMaterial({ 
@@ -1216,6 +1217,17 @@ const Game = {
     doorMesh.castShadow = true;
     doorMesh.receiveShadow = true;
     hinge.add(doorMesh);
+
+    // Static lintel wall block above the door to close the 0.8 unit gap to the ceiling
+    if (this.wallMat) {
+      const lintelGeo = new THREE.BoxGeometry(4, 0.8, 0.3);
+      const lintelMesh = new THREE.Mesh(lintelGeo, this.wallMat);
+      lintelMesh.position.set(x, yOffset + 3.6, z);
+      lintelMesh.castShadow = true;
+      lintelMesh.receiveShadow = true;
+      lintelMesh.userData.isCollisionWall = true;
+      this.scene.add(lintelMesh);
+    }
     
     // Visual handle
     const handleGeo = new THREE.SphereGeometry(0.1, 8, 8);
@@ -2157,10 +2169,12 @@ prompt.innerHTML = label;
 
   checkWallCollision(x, z) {
     const playerRadius = 0.4;
+    const eyeHeight = this.localPlayer.isCrouching ? 1.0 : 1.6;
+    const feetY = this.camera ? this.camera.position.y - eyeHeight : 0.0;
     // Simple bounding box for the player
     const playerBox = new THREE.Box3(
-      new THREE.Vector3(x - playerRadius, 0.1, z - playerRadius),
-      new THREE.Vector3(x + playerRadius, 3.0, z + playerRadius)
+      new THREE.Vector3(x - playerRadius, feetY + 0.1, z - playerRadius),
+      new THREE.Vector3(x + playerRadius, feetY + 1.9, z + playerRadius)
     );
 
     // Check intersection with any wall
