@@ -1024,28 +1024,28 @@ const Game = {
   // ==========================================
   buildHouseMap() {
     this.mapDataFloor0 = [
-      [1, 1, 1, 1, 1, 1, 3, 1, 1, 1],
-      [1, 0, 0, 0, 1, 0, 0, 0, 5, 1],
-      [1, 0, 6, 0, 1, 0, 1, 1, 0, 1],
-      [1, 0, 0, 0, 2, 0, 2, 0, 0, 1],
-      [1, 1, 2, 1, 1, 0, 1, 1, 2, 1],
-      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1],
-      [1, 0, 5, 0, 2, 0, 1, 0, 6, 1],
-      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1],
-      [1, 1, 1, 1, 1, 0, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      [1, 1, 2, 1, 1, 0, 2, 1, 1, 1],
+      [3, 0, 0, 0, 0, 0, 0, 0, 0, 1], // Exit door at Row 4, Col 0 (opens left)
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 2, 1, 1, 2, 1, 2, 2, 1],
+      [1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
+      [1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     ];
 
     this.mapDataFloor1 = [
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [1, 0, 0, 0, 1, 0, 0, 0, 5, 1],
-      [1, 0, 0, 0, 1, 0, 1, 1, 0, 1],
-      [1, 0, 0, 0, 2, 0, 2, 0, 0, 1],
-      [1, 1, 2, 1, 1, 0, 1, 1, 2, 1],
-      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1],
-      [1, 0, 5, 0, 2, 0, 1, 0, 0, 1],
-      [1, 0, 0, 0, 1, 0, 1, 0, 0, 1],
-      [1, 1, 1, 1, 1, 0, 1, 1, 1, 1],
+      [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      [1, 1, 2, 1, 1, 1, 2, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 2, 1, 1, 2, 1, 2, 2, 1],
+      [1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
+      [1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     ];
 
@@ -1087,14 +1087,14 @@ const Game = {
     this.walkableObjects.push(floor);
 
     // First floor tiles (placed at y = 3.9 so top matches y = 4.0)
-    // Omit Column 5, Row 8 for the stairs hole
+    // Omit Column 6, Row 4 & 5 for the stairs hole
     const tileGeo = new THREE.BoxGeometry(4, 0.2, 4);
     const cellSize = 4;
     const offset = -20 + cellSize/2; // -18 starting point
 
     for (let r = 0; r < 10; r++) {
       for (let c = 0; c < 10; c++) {
-        if (r === 8 && c === 5) continue; // Staircase hole
+        if (c === 6 && (r === 4 || r === 5)) continue; // Staircase hole
         
         const x = offset + c * cellSize;
         const z = offset + r * cellSize;
@@ -1165,11 +1165,11 @@ const Game = {
       }
     }
 
-    // Build Staircase (Column 5, Row 8 to 7, going from z = 16 to z = 8, y = 0 to y = 4)
-    const stairX = 2;
+    // Build Staircase (Column 6, Row 5 to 4, going from z = 4 to z = -4, y = 0 to y = 4)
+    const stairX = offset + 6 * cellSize; // Column 6
     const stepsCount = 12;
-    const stairZStart = 16;
-    const stairZEnd = 8;
+    const stairZStart = 4;
+    const stairZEnd = -4;
     const stepWidth = 3.2;
     const stepHeight = 0.25;
     const stepDepth = 0.75;
@@ -1344,9 +1344,9 @@ const Game = {
   spawnEscapeItems() {
     // Spawns items at pre-defined search drawer locations (some on Floor 0, some on Floor 1)
     const spawnPoints = [
-      { x: -14, y: 1.2, z: -14, id: 'key' },
-      { x: 14, y: 5.2, z: 2, id: 'crowbar' }, // Floor 1
-      { x: -6, y: 5.2, z: 6, id: 'code' }   // Floor 1
+      { x: -10, y: 1.2, z: -14, id: 'key' },     // Bedroom 1 (Floor 0)
+      { x: -10, y: 5.2, z: 14, id: 'crowbar' },  // Room 2 (Floor 1)
+      { x: 14, y: 1.2, z: -10, id: 'code' }      // Drawing Room (Floor 0)
     ];
 
     // Shuffle spawn points slightly if host
